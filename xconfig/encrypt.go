@@ -8,11 +8,13 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"gopkg.in/yaml.v3"
 	"io"
+	"io/ioutil"
+	"os"
 	"reflect"
 	"strings"
 )
-
 
 func Decode(obj interface{}, key string) error {
 	var v reflect.Value
@@ -65,9 +67,9 @@ func Encode(obj interface{}, key string) error {
 		return Encode(v.Elem(), key)
 	case reflect.String:
 		str := v.String()
-		if v.CanSet()  { //&& strings.HasPrefix(str, "ENC~")
-			text:= Encrypt([]byte(str), key)
-			v.SetString("ENC~"+string(text))
+		if v.CanSet() { //&& strings.HasPrefix(str, "ENC~")
+			text := Encrypt([]byte(str), key)
+			v.SetString("ENC~" + string(text))
 		}
 	case reflect.Struct:
 		for i := 0; i < v.NumField(); i++ {
@@ -86,6 +88,7 @@ func Encode(obj interface{}, key string) error {
 	case reflect.Interface:
 		return Encode(v.Interface(), key)
 	}
+
 	return nil
 }
 
@@ -137,4 +140,39 @@ func createHash(key string) string {
 	hasher := md5.New()
 	hasher.Write([]byte(key))
 	return hex.EncodeToString(hasher.Sum(nil))
+}
+
+func GenerateYaml(fileName string, Struct interface{}, key string) error {
+	f, err := os.Open(fileName)
+	if err != nil {
+		return err
+	}
+	d := yaml.NewDecoder(f)
+	err = d.Decode(&Struct)
+	if err != nil {
+		return err
+	}
+
+	b, _ := ioutil.ReadFile(fileName)
+	hz := strings.Split(fileName, ".")
+	if hz[len(hz)-1] == "yaml" {
+		fileName = strings.ReplaceAll(fileName, "yaml", "yml")
+	}
+	if hz[len(hz)-1] == "yml" {
+		fileName = strings.ReplaceAll(fileName, "yml", "yaml")
+	}
+
+	v := reflect.ValueOf(Struct)
+	var bb string
+	for i := 0; i < v.NumField(); i++ {
+		fieldStr := v.Field(i).String()
+		s := Encrypt([]byte(fieldStr), key)
+		bb = strings.ReplaceAll(string(b), fieldStr, s)
+
+	}
+	_ = f.Close()
+	err = ioutil.WriteFile(fileName, []byte(bb), 0644)
+
+	return err
+
 }
